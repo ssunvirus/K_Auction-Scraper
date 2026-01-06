@@ -10,17 +10,16 @@ import pandas as pd
 import datetime
 import io
 
-# 1. 페이지 설정
 st.set_page_config(page_title="케이옥션 통합 수집기", page_icon="🎨")
-st.title("📚 케이옥션 회차별 전 페이지 수집기")
+st.title("📚 케이옥션 회차별 전 정보 수집기")
 
-# --- UI 설정 ---
 st.sidebar.header("🔍 수집 범위 설정")
-start_no = st.sidebar.number_input("시작 회차 번호", min_value=1, value=193)
+start_no = st.sidebar.number_input("시작 회차 번호", min_value=1, value=191)
 end_no = st.sidebar.number_input("종료 회차 번호", min_value=1, value=193)
 
 if st.button("🚀 전체 데이터 수집 시작"):
     all_results = []
+    status_text = st.empty() 
     
     chrome_options = Options()
     chrome_options.add_argument("--headless")
@@ -34,54 +33,83 @@ if st.button("🚀 전체 데이터 수집 시작"):
 
         for auction_no in range(start_no, end_no + 1):
             page_idx = 1
-            while True: # 페이지 번호를 1부터 하나씩 늘리며 반복
+            while True:
                 target_url = f"https://www.k-auction.com/Auction/Major/{auction_no}?page_size=100&page={page_idx}"
-                st.write(f"🔄 제 {auction_no}회 - {page_idx}페이지 수집 중...")
+                status_text.info(f"🔎 접속 중: {target_url}")
                 
                 driver.get(target_url)
-                time.sleep(10) # 서버 부하 방지 및 로딩 대기
+                time.sleep(7) # 대기 시간을 7초로 조정하여 안정성 확보
 
                 items = driver.find_elements(By.CSS_SELECTOR, 'div.col.mb-4.list-pd.major-list-pd')
                 
-                # 해당 페이지에 작품이 없으면 해당 회차 수집 종료
-                if not items or len(items) <= 0:
+                if not items:
                     break
 
                 for item in items:
                     try:
                         if "card-empty" in item.get_attribute("class"): continue
                         
+                        # 1. 기본 정보
                         lot_num = item.find_element(By.CSS_SELECTOR, '.lot').text.strip()
                         artist = item.find_element(By.CSS_SELECTOR, '.card-title').text.strip()
                         title = item.find_element(By.CSS_SELECTOR, '.card-subtitle').text.strip()
                         
+                        # 2. 이미지 주소
+                        try:
+                            img_src = item.find_element(By.TAG_NAME, 'img').get_attribute('src')
+                        except:
+                            img_src = "-"
+                        
+                        # 3. 상세 정보 (소재, 사이즈, 연도)
+                        try:
+                            desc_element = item.find_element(By.CSS_SELECTOR, 'p.description')
+                            spans = desc_element.find_elements(By.TAG_NAME, 'span')
+                            material = spans[0].text.strip() if len(spans) > 0 else "-"
+                            size_year = spans[1].text.strip() if len(spans) > 1 else "-"
+                            
+                            size = size_year.split('|')[0].strip() if '|' in size_year else size_year
+                            year = size_year.split('|')[1].strip() if '|' in size_year else "-"
+                        except:
+                            material, size, year = "-", "-", "-"
+
+                        # 4. 가격 정보
+                        try:
+                            est_krw = item.find_element(By.CSS_SELECTOR, 'li.pull-right.text-right:not(.usd-type)').text.replace('\n', ' ').strip()
+                            est_usd = item.find_element(By.CSS_SELECTOR, 'li.usd-type').text.strip()
+                        except:
+                            est_krw, est_usd = "-", "-"
+
                         all_results.append({
                             "회차": auction_no,
-                            "페이지": page_idx,
                             "Lot": lot_num,
                             "작가": artist,
                             "작품명": title,
-                            "이미지": item.find_element(By.TAG_NAME, 'img').get_attribute('src') if item.find_elements(By.TAG_NAME, 'img') else "-"
+                            "소재": material,
+                            "사이즈": size,
+                            "제작연도": year,
+                            "추정가(KRW)": est_krw,
+                            "추정가(USD)": est_usd,
+                            "이미지주소": img_src
                         })
                     except:
                         continue
                 
-                # 만약 한 페이지당 100개씩 불러오도록 설정했으므로, 
-                # 작품 수가 적으면 다음 페이지가 없는 것으로 간주하고 루프 탈출
-                if len(items) < 10: # 한 페이지 아이템이 적으면 끝으로 간주
+                if len(items) < 100: 
                     break
-                
-                page_idx += 1 # 다음 페이지로 이동
+                page_idx += 1
 
         if all_results:
+            status_text.success(f"✅ 총 {len(all_results)}건 수집 완료!")
             df = pd.DataFrame(all_results)
-            st.success(f"✅ 총 {len(df)}건 수집 완료!")
             st.dataframe(df)
             
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False)
-            st.download_button("📥 통합 엑셀 다운로드", output.getvalue(), f"kauction_total.xlsx")
+            
+            st.download_button("📥 통합 상세 엑셀 다운로드", output.getvalue(), f"kauction_full_data.xlsx")
+        else:
+            status_text.warning("수집된 데이터가 없습니다.")
 
     except Exception as e:
         st.error(f"오류: {e}")
