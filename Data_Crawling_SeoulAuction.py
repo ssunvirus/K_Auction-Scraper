@@ -1,3 +1,10 @@
+작성하신 코드에서 아주 중요한 들여쓰기(Indentation) 오류가 하나 있습니다. 파이썬은 들여쓰기가 틀리면 코드가 작동하지 않는데, 현재 try-except 구문이 버튼 클릭(if st.button) 블록 밖으로 삐져나와 있어서 에러가 날 거예요.
+
+이 부분만 수정한 최종 완성본을 드릴게요. 이 코드를 그대로 복사해서 덮어쓰시면 됩니다.
+
+🏛️ 서울옥션 수집기 최종 코드
+Python
+
 import streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -23,14 +30,21 @@ if st.button("데이터 수집 시작"):
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
+        # 서버 환경에서 크롬 위치 강제 지정
+        chrome_options.binary_location = "/usr/bin/chromium"
         
-        # Streamlit 서버 환경 전용 설정
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-
-        results = []
-
+        # 드라이버 실행 (들여쓰기 수정 완료)
         try:
+            try:
+                # 방법 A: 시스템 설치된 드라이버 사용
+                driver = webdriver.Chrome(options=chrome_options)
+            except Exception:
+                # 방법 B: 실패 시 매니저로 설치하여 사용
+                service = Service(ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=chrome_options)
+
+            results = []
+
             # 2. 서울옥션 페이지 접속
             url = "https://www.seoulauction.com/privatesale/psList"
             driver.get(url)
@@ -92,4 +106,5 @@ if st.button("데이터 수집 시작"):
             st.error(f"오류가 발생했습니다: {e}")
         
         finally:
-            driver.quit()
+            if 'driver' in locals():
+                driver.quit()
