@@ -1,10 +1,3 @@
-작성하신 코드에서 아주 중요한 들여쓰기(Indentation) 오류가 하나 있습니다. 파이썬은 들여쓰기가 틀리면 코드가 작동하지 않는데, 현재 try-except 구문이 버튼 클릭(if st.button) 블록 밖으로 삐져나와 있어서 에러가 날 거예요.
-
-이 부분만 수정한 최종 완성본을 드릴게요. 이 코드를 그대로 복사해서 덮어쓰시면 됩니다.
-
-🏛️ 서울옥션 수집기 최종 코드
-Python
-
 import streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
