@@ -43,7 +43,7 @@ if st.button("데이터 수집 시작"):
             # 3. 데이터 수집 로직 시작
             target_url = "https://www.k-auction.com/Auction/Major/193" 
             driver.get(target_url)
-            time.sleep(7) 
+            time.sleep(15) 
 
             results = []
             # 작품 카드 리스트 찾기
