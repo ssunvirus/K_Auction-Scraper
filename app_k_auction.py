@@ -11,123 +11,79 @@ import datetime
 import io
 
 # 1. 페이지 설정
-st.set_page_config(page_title="케이옥션 수집기", page_icon="🎨")
-st.title("🎨 케이옥션 메이저 경매 수집기")
-st.info("대상 주소: https://www.k-auction.com/Auction/Major/193")
+st.set_page_config(page_title="케이옥션 통합 수집기", page_icon="🎨")
+st.title("📚 케이옥션 회차별 전 페이지 수집기")
 
-# 2. 수집 버튼 클릭 시 실행
-if st.button("데이터 수집 시작"):
-    with st.spinner('데이터를 불러오는 중입니다... (약 1분 소요)'):
-        
-        # --- 크롬 옵션 설정 (반드시 드라이버 생성 전에 정의) ---
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        
-        # 서버 환경에서 크롬 위치 강제 지정 (오류 방지)
-        chrome_options.binary_location = "/usr/bin/chromium"
-        
-        # 자동화 감지 우회 설정
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+# --- UI 설정 ---
+st.sidebar.header("🔍 수집 범위 설정")
+start_no = st.sidebar.number_input("시작 회차 번호", min_value=1, value=193)
+end_no = st.sidebar.number_input("종료 회차 번호", min_value=1, value=193)
 
-        try:
-            # --- 드라이버 생성 (배포 서버 환경 최적화) ---
-            # webdriver-manager가 현재 시스템의 크롬 버전을 확인하여 설치하도록 설정
-            service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
+if st.button("🚀 전체 데이터 수집 시작"):
+    all_results = []
+    
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.binary_location = "/usr/bin/chromium"
+    
+    try:
+        service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
 
-            # 3. 데이터 수집 로직 시작
-            target_url = "https://www.k-auction.com/Auction/Major/193" 
-            driver.get(target_url)
-            time.sleep(15) 
-
-            results = []
-            # 작품 카드 리스트 찾기
-            items = driver.find_elements(By.CSS_SELECTOR, 'div.col.mb-4.list-pd.major-list-pd')
-
-            for item in items:
-                try:
-                    # 빈 카드 건너뛰기
-                    if "card-empty" in item.get_attribute("class"):
-                        continue
-                        
-                    # 4. 기본 정보 추출
-                    lot_num = item.find_element(By.CSS_SELECTOR, '.lot').text.strip()
-                    artist = item.find_element(By.CSS_SELECTOR, '.card-title').text.strip()
-                    title = item.find_element(By.CSS_SELECTOR, '.card-subtitle').text.strip()
-                    
-                    # 이미지 주소 추출
-                    try:
-                        img_src = item.find_element(By.TAG_NAME, 'img').get_attribute('src')
-                    except:
-                        img_src = "-"
-                    
-                    # 5. 상세 스펙 분리 (소재, 사이즈, 연도)
-                    try:
-                        desc_element = item.find_element(By.CSS_SELECTOR, 'p.description')
-                        spans = desc_element.find_elements(By.TAG_NAME, 'span')
-                        
-                        material = spans[0].text.strip() if len(spans) > 0 else "-"
-                        size_year_text = spans[1].text.strip() if len(spans) > 1 else "-"
-                        
-                        if '|' in size_year_text:
-                            size = size_year_text.split('|')[0].strip()
-                            year = size_year_text.split('|')[1].strip()
-                        else:
-                            size = size_year_text
-                            year = "-"
-                    except:
-                        material, size, year = "-", "-", "-"
-
-                    # 6. 가격 정보
-                    try:
-                        est_krw = item.find_element(By.CSS_SELECTOR, 'li.pull-right.text-right:not(.usd-type)').text.replace('\n', ' ').strip()
-                        est_usd = item.find_element(By.CSS_SELECTOR, 'li.usd-type').text.strip()
-                    except:
-                        est_krw, est_usd = "-", "-"
-
-                    results.append({
-                        "Lot": lot_num,
-                        "작가": artist,
-                        "작품명": title,
-                        "소재": material,
-                        "사이즈": size,
-                        "제작연도": year,
-                        "추정가(KRW)": est_krw,
-                        "추정가(USD)": est_usd,
-                        "이미지주소": img_src
-                    })
-                except:
-                    continue
-
-            # 7. 결과 출력 및 다운로드
-            if results:
-                df = pd.DataFrame(results)
-                st.success(f"✅ 총 {len(df)}건의 데이터를 수집했습니다.")
-                st.dataframe(df)
-
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False, sheet_name='KAuction_193')
+        for auction_no in range(start_no, end_no + 1):
+            page_idx = 1
+            while True: # 페이지 번호를 1부터 하나씩 늘리며 반복
+                target_url = f"https://www.k-auction.com/Auction/Major/{auction_no}?page_size=100&page={page_idx}"
+                st.write(f"🔄 제 {auction_no}회 - {page_idx}페이지 수집 중...")
                 
-                timestamp = datetime.datetime.now().strftime("%H%M%S")
-                file_name = f"k_auction_193_{timestamp}.xlsx"
+                driver.get(target_url)
+                time.sleep(10) # 서버 부하 방지 및 로딩 대기
 
-                st.download_button(
-                    label="📥 엑셀 파일 다운로드",
-                    data=output.getvalue(),
-                    file_name=file_name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.warning("수집된 데이터가 없습니다.")
+                items = driver.find_elements(By.CSS_SELECTOR, 'div.col.mb-4.list-pd.major-list-pd')
+                
+                # 해당 페이지에 작품이 없으면 해당 회차 수집 종료
+                if not items or len(items) <= 0:
+                    break
 
-        except Exception as e:
-            st.error(f"오류 발생: {e}")
-        finally:
-            if 'driver' in locals():
-                driver.quit()
+                for item in items:
+                    try:
+                        if "card-empty" in item.get_attribute("class"): continue
+                        
+                        lot_num = item.find_element(By.CSS_SELECTOR, '.lot').text.strip()
+                        artist = item.find_element(By.CSS_SELECTOR, '.card-title').text.strip()
+                        title = item.find_element(By.CSS_SELECTOR, '.card-subtitle').text.strip()
+                        
+                        all_results.append({
+                            "회차": auction_no,
+                            "페이지": page_idx,
+                            "Lot": lot_num,
+                            "작가": artist,
+                            "작품명": title,
+                            "이미지": item.find_element(By.TAG_NAME, 'img').get_attribute('src') if item.find_elements(By.TAG_NAME, 'img') else "-"
+                        })
+                    except:
+                        continue
+                
+                # 만약 한 페이지당 100개씩 불러오도록 설정했으므로, 
+                # 작품 수가 적으면 다음 페이지가 없는 것으로 간주하고 루프 탈출
+                if len(items) < 10: # 한 페이지 아이템이 적으면 끝으로 간주
+                    break
+                
+                page_idx += 1 # 다음 페이지로 이동
+
+        if all_results:
+            df = pd.DataFrame(all_results)
+            st.success(f"✅ 총 {len(df)}건 수집 완료!")
+            st.dataframe(df)
+            
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            st.download_button("📥 통합 엑셀 다운로드", output.getvalue(), f"kauction_total.xlsx")
+
+    except Exception as e:
+        st.error(f"오류: {e}")
+    finally:
+        if 'driver' in locals(): driver.quit()
